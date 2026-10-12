@@ -1,0 +1,115 @@
+
+==================== 0. Dọn dẹp container cũ ====================
+Đã xóa network app-net và volume db-data
+
+==================== 1. Tạo Custom Bridge Network: app-net ====================
+f355689d5dc8441be5e4e033c0e8317bd8d32bedc2c128347e7ae4ea16b25be0
+f355689d5dc8   app-net                     bridge    local
+
+==================== 2. Tạo Named Volume: db-data ====================
+db-data
+local     db-data
+
+==================== 3. Khởi chạy Database container: db-server ====================
+Unable to find image 'postgres:15-alpine' locally
+15-alpine: Pulling from library/postgres
+277e2289225f: Pulling fs layer
+2c2e40dd947e: Pulling fs layer
+c020dab2e853: Pulling fs layer
+4f83103187f5: Pulling fs layer
+e9516be90840: Pulling fs layer
+3f49193fd82d: Pulling fs layer
+bc2205dd5a3a: Pulling fs layer
+2e9987a42d41: Pulling fs layer
+0976f43b012c: Pulling fs layer
+6ba2251a51ae: Pulling fs layer
+bc2205dd5a3a: Download complete
+c020dab2e853: Download complete
+3f49193fd82d: Download complete
+4f83103187f5: Download complete
+277e2289225f: Download complete
+2c2e40dd947e: Download complete
+0976f43b012c: Download complete
+6ba2251a51ae: Download complete
+2e9987a42d41: Download complete
+2c2e40dd947e: Pull complete
+bc2205dd5a3a: Pull complete
+3f49193fd82d: Pull complete
+2e9987a42d41: Pull complete
+697de61d3cc1: Download complete
+d3e3f1b947dc: Download complete
+e9516be90840: Download complete
+4f83103187f5: Pull complete
+e9516be90840: Pull complete
+c020dab2e853: Pull complete
+277e2289225f: Pull complete
+0976f43b012c: Pull complete
+6ba2251a51ae: Pull complete
+Digest: sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+Status: Downloaded newer image for postgres:15-alpine
+7090273e55ebcc2948ef709713bd24259ddd2a15c65bb3ff8dec9d70ac4f9d16
+Đang chờ PostgreSQL sẵn sàng. -> OK
+
+==================== 4. Khởi chạy Backend container: app-container ====================
+eda46e3a49e49c9c31c9a05e74c3c0b099d233e8d5b5c97dc15872c3724793c4
+CONTAINER ID   IMAGE                COMMAND                  CREATED         STATUS         PORTS                                         NAMES
+eda46e3a49e4   hw-backend:v1        "docker-entrypoint.s…"   3 seconds ago   Up 2 seconds   0.0.0.0:8081->3000/tcp, [::]:8081->3000/tcp   app-container
+7090273e55eb   postgres:15-alpine   "docker-entrypoint.s…"   5 seconds ago   Up 4 seconds   5432/tcp                                      db-server
+
+--> Biến môi trường kết nối DB trong app-container:
+DATABASE_URL=postgres://appuser:apppass@db-server:5432/appdb
+DB_HOST=db-server
+DB_NAME=appdb
+DB_PASSWORD=apppass
+DB_PORT=5432
+DB_USER=appuser
+
+--> Backend phân giải hostname 'db-server' qua DNS nội bộ của Docker:
+PING db-server (172.19.0.2): 56 data bytes
+64 bytes from 172.19.0.2: seq=0 ttl=64 time=0.281 ms
+64 bytes from 172.19.0.2: seq=1 ttl=64 time=0.084 ms
+
+--- db-server ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.084/0.182/0.281 ms
+
+==================== 5. Test Data Persistence ====================
+--> [5.1] Thêm dữ liệu
+CREATE TABLE
+INSERT 0 3
+ id |     name     |          created_at           
+----+--------------+-------------------------------
+  1 | Nguyen Van A | 2026-10-12 18:54:23.875314+00
+  2 | Tran Thi B   | 2026-10-12 18:54:23.875314+00
+  3 | Le Van C     | 2026-10-12 18:54:23.875314+00
+(3 rows)
+
+Trước khi xóa: rows=3 | md5=9b422247d6e5ee47a662fb3cd101b6a9 | container=7090273e55eb | ip=172.19.0.2
+
+--> [5.2] Xóa cứng container DB
+db-server
+
+--> [5.3] Khởi chạy lại container DB mới, gắn cùng volume db-data
+8d6121b4b4f3bf1f6769e4b26c134335a43642e259165838d95ca14f20adf7b8
+Đang chờ PostgreSQL sẵn sàng. -> OK
+
+--> [5.4] Xác minh dữ liệu
+ id |     name     |          created_at           
+----+--------------+-------------------------------
+  1 | Nguyen Van A | 2026-10-12 18:54:23.875314+00
+  2 | Tran Thi B   | 2026-10-12 18:54:23.875314+00
+  3 | Le Van C     | 2026-10-12 18:54:23.875314+00
+(3 rows)
+
+Sau khi tạo lại: rows=3 | md5=9b422247d6e5ee47a662fb3cd101b6a9 | container=8d6121b4b4f3 | ip=172.19.0.2
+
+--> Backend vẫn tìm thấy DB mới qua hostname 'db-server':
+PING db-server (172.19.0.2): 56 data bytes
+64 bytes from 172.19.0.2: seq=0 ttl=64 time=0.234 ms
+64 bytes from 172.19.0.2: seq=1 ttl=64 time=0.081 ms
+
+--- db-server ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.081/0.157/0.234 ms
+
+✅ PASS: Dữ liệu nguyên vẹn sau khi tái tạo container DB (3 rows, container 7090273e55eb -> 8d6121b4b4f3)
